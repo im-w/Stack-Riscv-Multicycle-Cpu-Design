@@ -1,0 +1,17 @@
+module reg #(
+    parameter WIDTH = 1
+) (
+    input  wire             clk,   // clock
+    input  wire             reset,   // async reset, active-high
+    input  wire [WIDTH-1:0] d,     // data in
+    output reg  [WIDTH-1:0] q      // data out
+);
+
+    always @(posedge clk or posedge reset) begin
+        if (reset)
+            q <= {WIDTH{1'b0}};    // reset to zero
+        else
+            q <= d;
+    end
+
+endmodule

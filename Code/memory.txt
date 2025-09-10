@@ -1,0 +1,12 @@
+store 25 12
+store 26 16
+store 27 18
+store 28 14
+PUSH 25
+PUSH 26
+PUSH 27
+PUSH 28
+ADD
+ADD
+ADD
+POP 30

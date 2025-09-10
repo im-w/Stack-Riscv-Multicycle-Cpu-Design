@@ -1,0 +1,194 @@
+module data_path (
+    // ———————————————————————————————————————————
+    // IO (Yellow)
+    // ———————————————————————————————————————————
+    input clk, reset,
+    input MemWrite, AdrSrc, PCWrite, IRWrite,
+    input [1:0] ALUSrcA, ALUSrcB,
+    input [1:0] ResultSrc,
+    input [1:0] ALUControl,
+    input push, pop, tos,
+    input A_or_B_stack_out_sel,
+    output [2:0] op,
+    output Zero
+    );
+
+    // ———————————————————————————————————————————
+    // PC register (Orange)
+    // ———————————————————————————————————————————
+    wire [4:0] PC;
+    wire [7:0] Result;
+    pc pc_inst (
+        .clk    (clk),
+        .reset  (reset),
+        .PCNext (Result[4:0]),
+        .PC     (PC),
+        .PCWrite (PCWrite)
+    );
+
+    // ———————————————————————————————————————————
+    // adr mux (Blue)
+    // ———————————————————————————————————————————
+    wire [4:0] instruction_mem_adr;
+    mux_2 #(5) adr_mux (
+        .in0    (PC),
+        .in1  (Result[4:0]),
+        .sel (AdrSrc),
+        .out     (instruction_mem_adr)
+    );
+    
+    // ———————————————————————————————————————————
+    // Instruction memory (Red)
+    // ———————————————————————————————————————————
+    wire [7:0] ReadData;
+
+    instruction_memory instruction_memory_inst (
+        .A  (instruction_mem_adr),
+        .RD (ReadData),
+        .WD (B),
+        .MemWrite (MemWrite),
+        .clk(clk)
+    );
+
+    // ———————————————————————————————————————————
+    // OldPc and Instr reg (Green)
+    // ———————————————————————————————————————————
+    wire [4:0] oldPc;
+    reg_with_en #(5) old_pc_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (PC),
+        .q     (oldPc),
+        .en (IRWrite)
+    );
+
+    wire [7:0] Instr;
+    wire [4:0] adr;
+    assign op = Instr[7:5];
+    assign adr = Instr[4:0];
+    reg_with_en #(8) instr_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (ReadData),
+        .q     (Instr),
+        .en (IRWrite)
+    );
+    
+
+
+    // ———————————————————————————————————————————
+    // Stack (Pink)
+    // ———————————————————————————————————————————
+    wire [7:0] d_out;
+    stack stack_inst (
+        .d_in(Result),
+        .d_out(d_out),
+        .push(push),
+        .pop(pop),
+        .tos(tos),
+        .clk(clk)
+    );
+    
+    // ———————————————————————————————————————————
+    // Stack d_out demux (Faded Blue)
+    // ———————————————————————————————————————————
+    demux_2 #(8) stack_d_out_demux (
+        .in    (d_out),
+        .sel (A_or_B_stack_out_sel),
+        .out0     (before_reg_A),
+        .out1     (before_reg_B)
+    );
+
+
+
+    // ———————————————————————————————————————————
+    // A and B reg (Faded Green)
+    // ———————————————————————————————————————————
+    wire [7:0] before_reg_A, before_reg_B;
+    wire [7:0] A, B;
+    reg_without_en #(8) A_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (before_reg_A),
+        .q     (A)
+    );
+
+    reg #(8) B_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (before_reg_B),
+        .q     (B)
+    );
+
+    // ———————————————————————————————————————————
+    // srcA mux (Faded Red)
+    // ———————————————————————————————————————————
+    wire [7:0]  SrcA ,SrcB, ALUResult;
+    mux_4 #(8) srcA_mux (
+        .in0    ({3'b000, PC}),
+        .in1  ({3'b000, oldPc}),
+        .in2  (A),
+        .in3  (8'd0),
+        .sel (ALUSrcA),
+        .out     (SrcA)
+    );
+    // ———————————————————————————————————————————
+    // srcB mux (Yellow)
+    // ———————————————————————————————————————————
+    mux_4 #(8) srcB_mux (
+        .in0    (B),
+        .in1  ({3'b000, adr}),
+        .in2  (8'd4),
+        .in3  (8'd0),
+        .sel (ALUSrcB),
+        .out     (SrcB)
+    );
+    
+    // ———————————————————————————————————————————
+    // ALU (Light Green)
+    // ———————————————————————————————————————————
+    alu alu_inst (
+        .A          (SrcA),
+        .B          (SrcB),
+        .ALUControl (ALUControl),
+        .ALUResult  (ALUResult),
+        .Zero       (Zero)
+    );
+
+    // ———————————————————————————————————————————
+    // ALUOut reg (Purple)
+    // ———————————————————————————————————————————
+    wire [7:0] AluOut;
+    reg_without_en #(8) alu_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (ALUResult),
+        .q     (AluOut)
+    );
+
+    // ———————————————————————————————————————————
+    // Data reg (Light Blue)
+    // ———————————————————————————————————————————
+    wire [7:0] Data;
+    reg_without_en #(8) data_reg  (
+        .clk    (clk),
+        .reset  (reset),
+        .d (ReadData),
+        .q     (Data)
+    );
+
+    // ———————————————————————————————————————————
+    // Result mux (Orange)
+    // ———————————————————————————————————————————
+    mux_4 #(8) result_mux (
+        .in0    (AluOut),
+        .in1    (Data),
+        .in2    (ALUResult),
+        .in3    ({3'b000, adr}),
+        .sel (ResultSrc),
+        .out (Result)
+    );
+
+    
+    
+endmodule
